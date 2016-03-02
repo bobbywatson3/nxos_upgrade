@@ -1,0 +1,112 @@
+---
+# tasks file for roles/nxos_upgrade
+- name: Check running NXOS code version
+  nxos_command:
+    command: show version
+    host: "{{ inventory_hostname }}"
+    username: "{{ switch_username }}"
+    password: "{{ switch_password }}"
+    type: show
+  register: show_version
+  when: show_version is not defined
+  tags:
+    - nxos_upgrade
+    - fw_upgrade
+- block:
+  - name: Check for configuration incompatibility
+    nxos_command:
+      command: "show incompatibility-all nxos {{ firmware_nxos_filename }}"
+      host: "{{ inventory_hostname }}"
+      username: "{{ switch_username }}"
+      password: "{{ switch_password }}"
+      type: show
+    register: nxos_incompatibility
+  - name: Fail if incompatibilities are detected.
+    fail:
+      msg: "Incompatibilites detected in firmware upgrade: {{ nxos_incompatibility.response[0].body.TABLE_incompat_all.ROW_incompat_all }}"
+    when: (firmware_nxos_filename != "{{ show_version.response[0].body.kick_file_name | basename }}") and
+          (nxos_incompatibility.response[0].body.TABLE_incompat_all.ROW_incompat_all[1].Str1 != "No incompatible configurations")
+
+  - name: Set switch to boot from new NXOS
+    nxos_command:
+      command: "boot nxos bootflash:/{{ firmware_nxos_filename }}"
+      host: "{{ inventory_hostname }}"
+      username: "{{ switch_username }}"
+      password: "{{ switch_password }}"
+      type: config
+
+  - name: Save config with new NXOS boot command
+    nxos_save_config:
+      host: "{{ inventory_hostname }}"
+      username: "{{ switch_username }}"
+      password: "{{ switch_password }}"
+
+  - name: Upgrade NXOS firmware (This will take an extended period of time.)
+    nxos_upgrade:
+      host: "{{ inventory_hostname }}"
+      username: "{{ switch_username }}"
+      password: "{{ switch_password }}"
+      filename: "{{ firmware_nxos_filename }}"
+      type: nxos
+      log: "{{ enable_logging }}"
+      log_file: "{{ log_file_dir }}/{{ inventory_hostname }}-nxos_upgrade_log_file.txt"
+
+  - name: Wait for Nexus Switch to reload
+    wait_for:
+      host: "{{ inventory_hostname }}"
+      port: 80
+      state: started
+      delay: 60
+      timeout: 300
+
+  # Verify that switch is running correct code
+  - name: Check running NXOS code version
+    nxos_command:
+      command: show version
+      host: "{{ inventory_hostname }}"
+      username: "{{ switch_username }}"
+      password: "{{ switch_password }}"
+      type: show
+    register: new_show_version
+
+  - name: Fail if running firmware is incorrect
+    fail:
+      msg: "Firmware was not upgraded"
+    when: (firmware_nxos_filename != "{{ show_version.response[0].body.kick_file_name | basename }}") and
+          (firmware_nxos_filename != "{{ new_show_version.response[0].body.kick_file_name | basename }}")
+  when: firmware_nxos_filename != "{{ show_version.response[0].body.kick_file_name | basename }}"
+  tags:
+    - nxos_upgrade
+    - fw_upgrade
+  # End block
+
+# EPLD upgrade is not part of block since it's not possible to check EPLD version without
+# having the file on the switch. The install procedure is run as it doesn't take much
+# longer than the check, and will not upgrade unless necessary.
+
+- block:
+  - name: Upgrade EPLD firmware (This will take an extended period of time.)
+    nxos_upgrade:
+      host: "{{ inventory_hostname }}"
+      username: "{{ switch_username }}"
+      password: "{{ switch_password }}"
+      filename: "{{ firmware_epld_filename }}"
+      type: epld
+      log: "{{ enable_logging }}"
+      log_file: "{{ log_file_dir }}/{{ inventory_hostname }}-epld_upgrade_log_file.txt"
+    register: epld_upgrade
+    tags:
+      - epld_upgrade
+      - fw_upgrade
+
+  - name: Wait for Nexus Switch to reload
+    wait_for:
+      host: "{{ inventory_hostname }}"
+      port: 80
+      state: started
+      delay: 60
+      timeout: 300
+    when: epld_upgrade|changed
+  tags:
+    - epld_upgrade
+    - fw_upgrade
