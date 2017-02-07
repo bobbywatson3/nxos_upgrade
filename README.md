@@ -1,6 +1,6 @@
 nxos_upgrade
 =========
-[![Build Status](https://travis-ci.org/robertwatson3/nxos_upgrade.svg?branch=master)](https://travis-ci.org/robertwatson3/nxos_upgrade)
+[![Build Status](https://travis-ci.org/bobbywatson3/nxos_upgrade.svg?branch=master)](https://travis-ci.org/robertwatson3/nxos_upgrade)
 
 Installs NXOS and EPLD firmware on Nexus OS devices.
 
