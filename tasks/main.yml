@@ -36,7 +36,8 @@
       type: config
 
   - name: Save config with new NXOS boot command
-    nxos_save_config:
+    nxos_config:
+      save: True
       host: "{{ inventory_hostname }}"
       username: "{{ switch_username }}"
       password: "{{ switch_password }}"
